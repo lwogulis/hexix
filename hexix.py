@@ -1,3 +1,4 @@
+from termcolor import colored
 import json
 import logging
 import os
@@ -13,7 +14,7 @@ rel_inverse = {
     "NW": "SE"
 }
 allowable_blue_moves = ["SW", "SE"]
-allowable_red_moves = ["NW", "SE"]
+allowable_red_moves = ["NW", "NE"]
 
 
 class HexixGame():
@@ -34,35 +35,54 @@ class HexixGame():
         self._init_board(board_data)
 
     def _init_board(self, board_data):
-        board = {}
+        self.board = {}
         for hex_name in board_data:
-            hx = HexixHex(hex_name, board_data[hex_name])
-            if hex_name == "H1":
-                hx.set_value(6, self.player1["color"], inverse=False)
-            if hex_name == "H30":
-                hx.set_value(6, self.player2["color"], inverse=False)
-            board[hex_name] = hx
-        self.board = board
+            self.board[hex_name] = HexixHex(hex_name, board_data[hex_name])
+        self.set_hex_value("H1", "blue", False, value=6)
+        self.set_hex_value("H30", "red", False, value=6)
+        self.board["H1"].set_as_home()
+        self.board["H30"].set_as_home()
+
+    def is_connected(self, hex_name, color):
+        return True
+
+    def set_hex_value(self, hex_name, color, inverse, value=None):
+        if not self.is_connected(hex_name, color):
+            return False
+        hex_info = self.board[hex_name]
+        hex_neighbors = hex_info.get_neighbors()
+        num_occupied_neighbors = 0
+        for rel in [n for n in hex_neighbors if hex_neighbors[n]]:
+            neighbor_name = hex_neighbors[rel]
+            neighbor_hex = self.board[neighbor_name]
+            if neighbor_hex.get_dice_value():
+                num_occupied_neighbors += 1
+        if value:
+            num_occupied_neighbors = value
+        self.board[hex_name].set_value(num_occupied_neighbors,
+                                       color, inverse)
+        return True
 
     def print_board(self):
         line_lengths = [1, 2, 3, 4, 3, 4, 3, 4, 3, 2, 1]
+        t = "\t"
         tt = "\t\t"
         board_layout = "\n"
         p1n = self.player1["name"]
         p2n = self.player2["name"]
         initial_tabs = 3 if len(p1n) < 6 else 2
         final_tabs = 3 if len(p2n) < 6 else 2
-        board_layout += "{}{}\n\n".format("\t" * initial_tabs, p1n)
+        board_layout += "{}{}\n\n".format(t * initial_tabs, p1n)
         line_start = 1
         for line_length in line_lengths:
             line_end = line_start + line_length
-            line_str = "\t" * (4 - line_length)
+            line_str = t * (4 - line_length)
             for h in range(line_start, line_end):
-                line_str += "{}{}".format(
-                    self.board["H{}".format(h)].get_value(), tt)
+                curr_hex = self.board["H{}".format(h)]
+                line_str += "{}{}".format(curr_hex.print_colored(), tt)
             board_layout += "{}\n\n".format(line_str)
             line_start = line_end
-        board_layout += "{}{}".format("\t" * final_tabs, p2n)
+        board_layout += "{}{}".format(t * final_tabs, p2n)
         logging.info(board_layout)
 
     def test_board_config(self):
@@ -91,7 +111,8 @@ class HexixHex():
         self.name = name
         self.value = None
         self.color = None
-        self.inverse = False
+        self.inverse = True
+        self.is_home = False
         # Using cardinal directions to indicate directional links
         self_neighbors = {
             "N": None,
@@ -105,6 +126,12 @@ class HexixHex():
             self_neighbors[rel_name] = neighbors[rel_name]
         self.neighbors = self_neighbors
 
+    def set_as_home(self):
+        self.is_home = True
+
+    def no_longer_home(self):
+        self.is_home = False
+
     def set_value(self, value, color, inverse):
         if self.value:
             logging.error("Hex already has value!")
@@ -112,17 +139,26 @@ class HexixHex():
         self.color = color
         self.inverse = inverse
 
-    def get_value(self):
-        return self.value if self.value else "{}"
+    def get_dice_value(self):
+        return self.value
+
+    def get_value_str(self):
+        return " {} ".format(self.value) if self.value else "{ }"
 
     def increment(self):
         if self.value < 6:
             self.value = self.value + 1
 
+    def get_neighbors(self):
+        return self.neighbors
+
     def num_neighbors(self):
         return len([rel for rel in self.relations if rel])
 
-    def print(self):
+    def get_color(self):
+        return self.color
+
+    def _debug_print_neighbors(self):
         rels_to_print = {rel_name: (self.neighbors[rel_name] or "")
                          for rel_name in self.neighbors}
         str_to_print = "\n\t{}\n{}\t\t{}\n\t{}\n{}\t\t{}\n\t{}".format(
@@ -137,8 +173,20 @@ class HexixHex():
         logging.debug(str_to_print)
         return str_to_print
 
+    def print_colored(self):
+        color = self.get_color()
+        if not color:
+            return colored(self.get_value_str(), 'white')
+        if self.inverse:
+            return colored(self.get_value_str(), color, "on_white",
+                           attrs=['bold'])
+        return colored(self.get_value_str(), "grey", "on_{}".format(color),
+                       attrs=['bold', 'dark'])
+
 
 if __name__ == '__main__':
     game = HexixGame()
     game.test_board_config()
+    game.print_board()
+    game.set_hex_value('H2', 'blue', True)
     game.print_board()

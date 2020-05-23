@@ -1,4 +1,5 @@
 # hexix
+
 Implementation of hexix dice game
 
-To run: `cd src; python hexix.py`
+To run: `python hexix.py`
